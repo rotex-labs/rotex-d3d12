@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Direct3D 12 backend for Rotex"
-repository = "https://github.com/rotexengine/rotex-d3d12"
+repository = "https://github.com/rotex-labs/rotex-d3d12"
 
 [dependencies]
 async-trait = "0.1.89"
