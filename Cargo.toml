@@ -2,7 +2,7 @@
 name = "rotex-d3d12"
 version = "0.2.0"
 edition = "2024"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "Direct3D 12 backend for Rotex"
 repository = "https://github.com/rotexengine/rotex-d3d12"
 
