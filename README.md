@@ -24,10 +24,6 @@ Direct3D 12 on Windows. Other platforms return unsupported.
 
 Version 0.2.0. Off Windows every core capability is absent and `GpuPlatform::new` returns unsupported. The Windows translator is not built by a Linux `cargo check`.
 
-## Part of Rotex
-
-Rotex is a graphics HAL workspace. See [rotex-dev](https://github.com/rotex-labs/rotex-dev) for the architecture and the other crates.
-
 ## License
 
 Licensed under either of
