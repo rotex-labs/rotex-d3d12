@@ -1,3 +1,13 @@
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+
+//! Direct3D 12 backend.
+//!
+//! [`D3d12GpuPlatform`] and [`D3d12Bridge`] accept the same platform and command
+//! inputs as the other backends. The translator is compiled on Windows. On
+//! other targets the crate still builds, and creating a device returns
+//! unsupported.
+
 mod caps;
 mod gpu_platform;
 mod recorder;

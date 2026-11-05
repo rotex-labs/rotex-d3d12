@@ -7,6 +7,9 @@ use rotex_types::{
 #[cfg(windows)]
 use crate::caps;
 
+/// Translates [`rotex_types::RhiCommand`] values to Direct3D 12 on Windows.
+///
+/// On other targets every command returns unsupported.
 pub struct D3d12Bridge {
     capabilities: BackendCapabilities,
     #[cfg(windows)]
