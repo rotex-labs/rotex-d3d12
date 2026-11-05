@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use rotex_core::Error;
 use rotex_types::{
     AdapterCapabilities, AdapterId, AdapterInfo, AdapterQueueSupport, BufferId, CreatedResources,
-    Extent2D, GpuApiBackend, GraphicsPipelineId, HardwareFamily, Limits, PassColorTarget,
-    ResourceBatchCreate, ResourceBatchUpdate, ResourceCreateDescriptor, ResourceHandle,
-    ResourceState, ResourceUpdateDescriptor, RhiCommand, SurfaceDescriptor, TextureId,
-    TextureReadback,
+    D3dRegisterClass, Extent2D, GpuApiBackend, GraphicsPipelineId, HardwareFamily, Limits,
+    PassColorTarget, PhysicalRemap, ResourceBatchCreate, ResourceBatchUpdate,
+    ResourceCreateDescriptor, ResourceHandle, ResourceState, ResourceUpdateDescriptor, RhiCommand,
+    ShaderArtifact, ShaderId, SurfaceDescriptor, TargetId, TextureId, TextureReadback,
 };
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D12::*;
@@ -16,6 +16,7 @@ use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2, IDXGIAdapter1, IDXGIFactory4};
+use windows::core::Interface;
 
 use crate::caps;
 
@@ -82,7 +83,8 @@ struct GpuTexture {
 }
 
 struct GpuPipeline {
-    state: Option<ID3D12PipelineState>,
+    state: ID3D12PipelineState,
+    root_signature: ID3D12RootSignature,
 }
 
 pub(crate) struct Device {
@@ -101,6 +103,8 @@ pub(crate) struct Device {
     buffers: HashMap<BufferId, GpuBuffer>,
     textures: HashMap<TextureId, GpuTexture>,
     pipelines: HashMap<GraphicsPipelineId, GpuPipeline>,
+    shaders: HashMap<ShaderId, ShaderArtifact>,
+    bound_signature: Option<ID3D12RootSignature>,
 }
 
 impl Device {
@@ -155,6 +159,8 @@ impl Device {
                 buffers: HashMap::new(),
                 textures: HashMap::new(),
                 pipelines: HashMap::new(),
+                shaders: HashMap::new(),
+                bound_signature: None,
             })
         }
     }
@@ -206,13 +212,18 @@ impl Device {
     }
 
     pub(crate) fn read_texture(&mut self, id: TextureId) -> Result<TextureReadback, Error> {
-        let texture = self
-            .textures
-            .get(&id)
-            .ok_or_else(|| Error::unsupported("texture not found"))?;
-        let width = texture.width;
-        let height = texture.height;
-        let format = texture.format;
+        let (width, height, format, resource) = {
+            let texture = self
+                .textures
+                .get(&id)
+                .ok_or_else(|| Error::unsupported("texture not found"))?;
+            (
+                texture.width,
+                texture.height,
+                texture.format,
+                texture.resource.clone(),
+            )
+        };
         let byte_count = (width * height * 4) as u64;
         let readback = self.create_buffer_resource(byte_count, D3D12_HEAP_TYPE_READBACK)?;
         self.begin()?;
@@ -222,7 +233,7 @@ impl Device {
                 0,
                 0,
                 0,
-                &texture_location(&texture.resource, 0),
+                &texture_location(&resource, 0),
                 None,
             );
         }
@@ -329,14 +340,39 @@ impl Device {
                 if self.pipelines.contains_key(&id) {
                     return Err(Error::unsupported("resource id already exists"));
                 }
-                let state = create_pipeline_state(
+                let (state, root_signature) = create_pipeline_state(
                     &self.device,
-                    &self.root_signature,
+                    &pipeline.shaders.layout,
                     &pipeline.shaders.vertex,
                     &pipeline.shaders.fragment,
                 )?;
-                self.pipelines.insert(id, GpuPipeline { state });
+                self.pipelines.insert(
+                    id,
+                    GpuPipeline {
+                        state,
+                        root_signature,
+                    },
+                );
                 Ok(ResourceHandle::GraphicsPipeline(id))
+            }
+            ResourceCreateDescriptor::Shader { id, artifact } => {
+                let id = ShaderId(id);
+                if self.shaders.contains_key(&id) {
+                    return Err(Error::unsupported("resource id already exists"));
+                }
+                if artifact.payload(TargetId::D3d12Dxil).is_none() {
+                    return Err(Error::unsupported("shader artifact has no DXIL payload"));
+                }
+                if let Some(cap) = artifact.unmet_capability(&["compute", "storage_buffer"]) {
+                    let message = match cap {
+                        "compute" => "shader requires compute",
+                        "storage_buffer" => "shader requires storage buffers",
+                        _ => "shader requires an unsupported capability",
+                    };
+                    return Err(Error::unsupported(message));
+                }
+                self.shaders.insert(id, artifact);
+                Ok(ResourceHandle::Shader(id))
             }
             _ => Err(Error::unsupported("resource is not implemented on d3d12")),
         }
@@ -353,8 +389,17 @@ impl Device {
             ResourceHandle::GraphicsPipeline(id) => {
                 self.pipelines.remove(&id);
             }
+            ResourceHandle::Shader(id) => {
+                self.shaders.remove(&id);
+            }
             _ => {}
         }
+    }
+
+    fn active_signature(&self) -> ID3D12RootSignature {
+        self.bound_signature
+            .clone()
+            .unwrap_or_else(|| self.root_signature.clone())
     }
 
     fn record(&mut self, command: &RhiCommand) -> Result<(), Error> {
@@ -440,8 +485,9 @@ impl Device {
             }
             RhiCommand::PushConstants { offset, data, .. } => {
                 self.begin()?;
+                let signature = self.active_signature();
                 unsafe {
-                    self.list.SetGraphicsRootSignature(&self.root_signature);
+                    self.list.SetGraphicsRootSignature(&signature);
                     self.list.SetGraphicsRoot32BitConstants(
                         0,
                         (data.len() / 4) as u32,
@@ -453,15 +499,17 @@ impl Device {
             }
             RhiCommand::SetGraphicsPipeline { pipeline } => {
                 self.begin()?;
-                let state = self
-                    .pipelines
-                    .get(pipeline)
-                    .and_then(|pipeline| pipeline.state.clone());
+                let (state, signature) = {
+                    let pipeline = self
+                        .pipelines
+                        .get(pipeline)
+                        .ok_or_else(|| Error::unsupported("graphics pipeline not found"))?;
+                    (pipeline.state.clone(), pipeline.root_signature.clone())
+                };
+                self.bound_signature = Some(signature.clone());
                 unsafe {
-                    self.list.SetGraphicsRootSignature(&self.root_signature);
-                    if let Some(state) = state {
-                        self.list.SetPipelineState(&state);
-                    }
+                    self.list.SetGraphicsRootSignature(&signature);
+                    self.list.SetPipelineState(&state);
                 }
                 Ok(())
             }
@@ -618,9 +666,9 @@ impl Device {
                 .Close()
                 .map_err(|_| Error::unsupported("command list close failed"))?;
             let lists: [Option<ID3D12CommandList>; 1] =
-                [Some(self.list.cast().map_err(|_| {
-                    Error::unsupported("command list cast failed")
-                })?)];
+                [Some(self.list.cast::<ID3D12CommandList>().map_err(
+                    |_| Error::unsupported("command list cast failed"),
+                )?)];
             self.queue.ExecuteCommandLists(&lists);
             self.fence_value += 1;
             self.queue
@@ -757,6 +805,10 @@ fn d3d_state(state: ResourceState) -> D3D12_RESOURCE_STATES {
         ResourceState::VertexBuffer | ResourceState::IndexBuffer | ResourceState::Uniform => {
             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
         }
+        ResourceState::VertexShaderRead => {
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+                | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        }
         ResourceState::IndirectArg => D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
         ResourceState::Present => D3D12_RESOURCE_STATE_PRESENT,
         _ => D3D12_RESOURCE_STATE_COMMON,
@@ -818,16 +870,15 @@ fn indexed_indirect_signature(device: &ID3D12Device) -> Result<ID3D12CommandSign
 
 fn create_pipeline_state(
     device: &ID3D12Device,
-    root: &ID3D12RootSignature,
+    layout: &rotex_types::AbstractPipelineLayout,
     vertex: &rotex_types::ShaderPackage,
     fragment: &rotex_types::ShaderPackage,
-) -> Result<Option<ID3D12PipelineState>, Error> {
-    let Some(vs) = dxil(vertex) else {
-        return Ok(None);
-    };
-    let Some(ps) = dxil(fragment) else {
-        return Ok(None);
-    };
+) -> Result<(ID3D12PipelineState, ID3D12RootSignature), Error> {
+    let vs = dxil(vertex).ok_or_else(|| Error::unsupported("vertex shader has no DXIL payload"))?;
+    let ps =
+        dxil(fragment).ok_or_else(|| Error::unsupported("fragment shader has no DXIL payload"))?;
+    let remap = PhysicalRemap::from_layout(TargetId::D3d12Dxil, layout);
+    let root = root_signature_from_remap(device, &remap)?;
     unsafe {
         let mut desc: D3D12_GRAPHICS_PIPELINE_STATE_DESC = std::mem::zeroed();
         desc.pRootSignature = std::mem::ManuallyDrop::new(Some(root.clone()));
@@ -848,10 +899,90 @@ fn create_pipeline_state(
         desc.NumRenderTargets = 1;
         desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         desc.SampleDesc.Count = 1;
-        device
+        let state = device
             .CreateGraphicsPipelineState(&desc)
-            .map(Some)
-            .map_err(|_| Error::unsupported("CreateGraphicsPipelineState failed"))
+            .map_err(|_| Error::unsupported("CreateGraphicsPipelineState failed"))?;
+        Ok((state, root))
+    }
+}
+
+fn root_signature_from_remap(
+    device: &ID3D12Device,
+    remap: &PhysicalRemap,
+) -> Result<ID3D12RootSignature, Error> {
+    let PhysicalRemap::D3d12 {
+        bindings,
+        root_constants,
+    } = remap
+    else {
+        return Err(Error::unsupported("root signature requires a D3D12 remap"));
+    };
+    let constant_count = root_constants
+        .as_ref()
+        .map(|constants| constants.num_32bit_values)
+        .unwrap_or(16)
+        .max(1);
+    let mut parameters = Vec::with_capacity(bindings.len() + 1);
+    parameters.push(D3D12_ROOT_PARAMETER {
+        ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+        Anonymous: D3D12_ROOT_PARAMETER_0 {
+            Constants: D3D12_ROOT_CONSTANTS {
+                ShaderRegister: root_constants
+                    .as_ref()
+                    .map(|constants| constants.register)
+                    .unwrap_or(0),
+                RegisterSpace: root_constants
+                    .as_ref()
+                    .map(|constants| constants.space)
+                    .unwrap_or(0),
+                Num32BitValues: constant_count,
+            },
+        },
+        ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+    });
+    for binding in bindings {
+        let parameter_type = match binding.class {
+            D3dRegisterClass::B => D3D12_ROOT_PARAMETER_TYPE_CBV,
+            D3dRegisterClass::T => D3D12_ROOT_PARAMETER_TYPE_SRV,
+            D3dRegisterClass::U => D3D12_ROOT_PARAMETER_TYPE_UAV,
+            D3dRegisterClass::S => {
+                return Err(Error::unsupported(
+                    "sampler root signature requires a descriptor table",
+                ));
+            }
+        };
+        parameters.push(D3D12_ROOT_PARAMETER {
+            ParameterType: parameter_type,
+            Anonymous: D3D12_ROOT_PARAMETER_0 {
+                Descriptor: D3D12_ROOT_DESCRIPTOR {
+                    ShaderRegister: binding.register,
+                    RegisterSpace: binding.space,
+                },
+            },
+            ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+        });
+    }
+    unsafe {
+        let desc = D3D12_ROOT_SIGNATURE_DESC {
+            NumParameters: parameters.len() as u32,
+            pParameters: if parameters.is_empty() {
+                std::ptr::null()
+            } else {
+                parameters.as_ptr()
+            },
+            NumStaticSamplers: 0,
+            pStaticSamplers: std::ptr::null(),
+            Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
+        };
+        let mut blob: Option<windows::Win32::Graphics::Direct3D::ID3DBlob> = None;
+        D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &mut blob, None)
+            .map_err(|_| Error::unsupported("D3D12SerializeRootSignature failed"))?;
+        let blob = blob.ok_or_else(|| Error::unsupported("root signature blob missing"))?;
+        let bytes =
+            std::slice::from_raw_parts(blob.GetBufferPointer() as *const u8, blob.GetBufferSize());
+        device
+            .CreateRootSignature(0, bytes)
+            .map_err(|_| Error::unsupported("CreateRootSignature failed"))
     }
 }
 
