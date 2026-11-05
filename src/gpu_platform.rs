@@ -4,6 +4,10 @@ use rotex_types::{AdapterId, DeviceDescriptor, PlatformDescriptor};
 
 use crate::recorder::D3d12Bridge;
 
+/// Direct3D 12 implementation of [`GpuPlatform`](rotex_core::GpuPlatform).
+///
+/// On non-Windows targets [`GpuPlatform::new`](rotex_core::GpuPlatform::new)
+/// returns unsupported.
 pub struct D3d12GpuPlatform {
     #[cfg(windows)]
     adapter: crate::native::Adapter,
