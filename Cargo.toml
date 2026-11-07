@@ -20,7 +20,11 @@ pollster = "0.4.0"
 rotex-conformance = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "23ba8931416ce7b604d91604bf421c3b514271d8" }
 
 [target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6.2"
 windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D12",
     "Win32_Graphics_Dxgi",

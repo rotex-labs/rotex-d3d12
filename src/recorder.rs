@@ -106,7 +106,7 @@ impl GpuBackend for D3d12Bridge {
         }
     }
 
-    fn destroy(self: Box<Self>) {
+    fn destroy(self) {
         #[cfg(windows)]
         {
             self.device.destroy();
