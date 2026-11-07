@@ -35,7 +35,9 @@ pub(crate) fn empty_root_signature(device: &ID3D12Device) -> Result<ID3D12RootSi
             .map_err(|_| Error::unsupported("CreateRootSignature failed"))
     }
 }
-pub(crate) fn indexed_indirect_signature(device: &ID3D12Device) -> Result<ID3D12CommandSignature, Error> {
+pub(crate) fn indexed_indirect_signature(
+    device: &ID3D12Device,
+) -> Result<ID3D12CommandSignature, Error> {
     unsafe {
         let argument = D3D12_INDIRECT_ARGUMENT_DESC {
             Type: D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED,
@@ -54,19 +56,18 @@ pub(crate) fn indexed_indirect_signature(device: &ID3D12Device) -> Result<ID3D12
         signature.ok_or_else(|| Error::unsupported("CreateCommandSignature failed"))
     }
 }
+type GraphicsPipelineParts = (
+    ID3D12PipelineState,
+    ID3D12RootSignature,
+    Vec<ViewBinding>,
+    D3D_PRIMITIVE_TOPOLOGY,
+    Vec<u32>,
+);
+
 pub(crate) fn create_graphics_pipeline(
     device: &ID3D12Device,
     pipeline: &rotex_types::GraphicsPipelineDescriptor,
-) -> Result<
-    (
-        ID3D12PipelineState,
-        ID3D12RootSignature,
-        Vec<ViewBinding>,
-        D3D_PRIMITIVE_TOPOLOGY,
-        Vec<u32>,
-    ),
-    Error,
-> {
+) -> Result<GraphicsPipelineParts, Error> {
     let vs = dxil(&pipeline.shaders.vertex)
         .ok_or_else(|| Error::unsupported("vertex shader has no DXIL payload"))?;
     let ps = dxil(&pipeline.shaders.fragment)
@@ -294,7 +295,11 @@ pub(crate) fn graphics_root_signature(
                 table: false,
             });
         }
-        let samplers = if has_sampler { vec![sampler] } else { Vec::new() };
+        let samplers = if has_sampler {
+            vec![sampler]
+        } else {
+            Vec::new()
+        };
         let root = serialize_root(device, &parameters, &samplers)?;
         Ok((root, views))
     }
@@ -391,30 +396,30 @@ pub(crate) unsafe fn serialize_root(
     samplers: &[D3D12_STATIC_SAMPLER_DESC],
 ) -> Result<ID3D12RootSignature, Error> {
     unsafe {
-    let desc = D3D12_ROOT_SIGNATURE_DESC {
-        NumParameters: parameters.len() as u32,
-        pParameters: if parameters.is_empty() {
-            std::ptr::null()
-        } else {
-            parameters.as_ptr()
-        },
-        NumStaticSamplers: samplers.len() as u32,
-        pStaticSamplers: if samplers.is_empty() {
-            std::ptr::null()
-        } else {
-            samplers.as_ptr()
-        },
-        Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
-    };
-    let mut blob: Option<windows::Win32::Graphics::Direct3D::ID3DBlob> = None;
-    D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &mut blob, None)
-        .map_err(|_| Error::unsupported("D3D12SerializeRootSignature failed"))?;
-    let blob = blob.ok_or_else(|| Error::unsupported("root signature blob missing"))?;
-    let bytes =
-        std::slice::from_raw_parts(blob.GetBufferPointer() as *const u8, blob.GetBufferSize());
-    device
-        .CreateRootSignature(0, bytes)
-        .map_err(|_| Error::unsupported("CreateRootSignature failed"))
+        let desc = D3D12_ROOT_SIGNATURE_DESC {
+            NumParameters: parameters.len() as u32,
+            pParameters: if parameters.is_empty() {
+                std::ptr::null()
+            } else {
+                parameters.as_ptr()
+            },
+            NumStaticSamplers: samplers.len() as u32,
+            pStaticSamplers: if samplers.is_empty() {
+                std::ptr::null()
+            } else {
+                samplers.as_ptr()
+            },
+            Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
+        };
+        let mut blob: Option<windows::Win32::Graphics::Direct3D::ID3DBlob> = None;
+        D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &mut blob, None)
+            .map_err(|_| Error::unsupported("D3D12SerializeRootSignature failed"))?;
+        let blob = blob.ok_or_else(|| Error::unsupported("root signature blob missing"))?;
+        let bytes =
+            std::slice::from_raw_parts(blob.GetBufferPointer() as *const u8, blob.GetBufferSize());
+        device
+            .CreateRootSignature(0, bytes)
+            .map_err(|_| Error::unsupported("CreateRootSignature failed"))
     }
 }
 pub(crate) fn input_layout(

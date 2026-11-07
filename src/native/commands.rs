@@ -11,11 +11,11 @@ impl super::device::Device {
         unsafe {
             if self.compute_bound {
                 if let Some(id) = self.bound_compute {
-                    let pipeline = self.compute_pipelines.get(&id).ok_or_else(|| {
-                        Error::unsupported("compute pipeline not found")
-                    })?;
-                    self.list
-                        .SetComputeRootSignature(&pipeline.root_signature);
+                    let pipeline = self
+                        .compute_pipelines
+                        .get(&id)
+                        .ok_or_else(|| Error::unsupported("compute pipeline not found"))?;
+                    self.list.SetComputeRootSignature(&pipeline.root_signature);
                 } else {
                     self.list.SetComputeRootSignature(&self.root_signature);
                 }
@@ -24,8 +24,7 @@ impl super::device::Device {
                     .pipelines
                     .get(&id)
                     .ok_or_else(|| Error::unsupported("graphics pipeline not found"))?;
-                self.list
-                    .SetGraphicsRootSignature(&pipeline.root_signature);
+                self.list.SetGraphicsRootSignature(&pipeline.root_signature);
             } else {
                 self.list.SetGraphicsRootSignature(&self.root_signature);
             }
@@ -178,8 +177,7 @@ impl super::device::Device {
                         .ok_or_else(|| Error::unsupported("graphics pipeline not found"))?;
                     let topology = pipeline.topology;
                     unsafe {
-                        self.list
-                            .SetGraphicsRootSignature(&pipeline.root_signature);
+                        self.list.SetGraphicsRootSignature(&pipeline.root_signature);
                         self.list.SetPipelineState(&pipeline.state);
                         self.list.IASetPrimitiveTopology(topology);
                     }
@@ -201,8 +199,7 @@ impl super::device::Device {
                         .get(&id)
                         .ok_or_else(|| Error::unsupported("compute pipeline not found"))?;
                     unsafe {
-                        self.list
-                            .SetComputeRootSignature(&pipeline.root_signature);
+                        self.list.SetComputeRootSignature(&pipeline.root_signature);
                         self.list.SetPipelineState(&pipeline.state);
                     }
                 }
@@ -212,9 +209,11 @@ impl super::device::Device {
                 self.root_bound = true;
                 Ok(())
             }
-            RhiCommand::BindGroups { first_slot, bind_groups, .. } => {
-                self.bind_groups(*first_slot, bind_groups)
-            }
+            RhiCommand::BindGroups {
+                first_slot,
+                bind_groups,
+                ..
+            } => self.bind_groups(*first_slot, bind_groups),
             RhiCommand::Draw {
                 vertex_count,
                 instance_count,
@@ -395,8 +394,7 @@ impl super::device::Device {
             self.list
                 .Reset(&self.allocator, None)
                 .map_err(|_| Error::unsupported("command list reset failed"))?;
-            self.list
-                .SetDescriptorHeaps(&[Some(self.srv_heap.clone())]);
+            self.list.SetDescriptorHeaps(&[Some(self.srv_heap.clone())]);
         }
         self.recording = true;
         self.root_bound = false;
@@ -475,35 +473,31 @@ impl super::device::Device {
     }
 
     pub(crate) fn finish_frame(&mut self, present: bool) -> Result<(), Error> {
-        if present {
-            if let Some(index) = self.back_index {
-                let resource = self
-                    .swap
-                    .as_ref()
-                    .ok_or_else(|| Error::unsupported("swapchain missing"))?
-                    .buffers[index]
-                    .clone();
-                let before = self
-                    .swap
-                    .as_ref()
-                    .ok_or_else(|| Error::unsupported("swapchain missing"))?
-                    .states[index];
-                self.transition(&resource, before, D3D12_RESOURCE_STATE_PRESENT)?;
-                if let Some(swap) = self.swap.as_mut() {
-                    swap.states[index] = D3D12_RESOURCE_STATE_PRESENT;
-                }
-                self.back_index = None;
+        if present && let Some(index) = self.back_index {
+            let resource = self
+                .swap
+                .as_ref()
+                .ok_or_else(|| Error::unsupported("swapchain missing"))?
+                .buffers[index]
+                .clone();
+            let before = self
+                .swap
+                .as_ref()
+                .ok_or_else(|| Error::unsupported("swapchain missing"))?
+                .states[index];
+            self.transition(&resource, before, D3D12_RESOURCE_STATE_PRESENT)?;
+            if let Some(swap) = self.swap.as_mut() {
+                swap.states[index] = D3D12_RESOURCE_STATE_PRESENT;
             }
+            self.back_index = None;
         }
         self.submit()?;
-        if present {
-            if let Some(swap) = &self.swap {
-                unsafe {
-                    swap.chain
-                        .Present(1, DXGI_PRESENT(0))
-                        .ok()
-                        .map_err(|_| Error::unsupported("Present failed"))?;
-                }
+        if present && let Some(swap) = &self.swap {
+            unsafe {
+                swap.chain
+                    .Present(1, DXGI_PRESENT(0))
+                    .ok()
+                    .map_err(|_| Error::unsupported("Present failed"))?;
             }
         }
         Ok(())
@@ -532,7 +526,11 @@ impl super::device::Device {
         }
     }
 
-    pub(crate) fn bind_groups(&mut self, first_slot: u32, bind_groups: &[BindGroupId]) -> Result<(), Error> {
+    pub(crate) fn bind_groups(
+        &mut self,
+        first_slot: u32,
+        bind_groups: &[BindGroupId],
+    ) -> Result<(), Error> {
         self.begin()?;
         self.ensure_root()?;
         let compute = self.compute_bound;
@@ -646,8 +644,7 @@ impl super::device::Device {
                 .ok_or_else(|| Error::unsupported("texture not found"))?
                 .resource;
             unsafe {
-                self.device
-                    .CreateShaderResourceView(resource, None, cpu);
+                self.device.CreateShaderResourceView(resource, None, cpu);
             }
             if let Some(texture) = self.textures.get_mut(&texture_id) {
                 texture.srv = Some(index);
@@ -715,7 +712,12 @@ impl super::device::Device {
         Ok(())
     }
 
-    pub(crate) fn bind_vertex(&mut self, buffer: BufferId, binding: u32, offset: u64) -> Result<(), Error> {
+    pub(crate) fn bind_vertex(
+        &mut self,
+        buffer: BufferId,
+        binding: u32,
+        offset: u64,
+    ) -> Result<(), Error> {
         self.begin()?;
         let (size, state, address) = {
             let buffer = self
@@ -756,5 +758,4 @@ impl super::device::Device {
         }
         Ok(())
     }
-
 }

@@ -41,8 +41,6 @@ pub(crate) struct Device {
 }
 
 impl Device {
-
-
     pub(crate) fn open(adapter: &Adapter) -> Result<Self, Error> {
         unsafe {
             let debug = debug_requested();
@@ -315,5 +313,4 @@ impl Device {
             height,
         })
     }
-
 }

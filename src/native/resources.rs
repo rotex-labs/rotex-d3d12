@@ -4,7 +4,10 @@ use super::prelude::*;
 use super::types::*;
 
 impl super::device::Device {
-    pub(crate) fn create_one(&mut self, resource: ResourceCreateDescriptor) -> Result<ResourceHandle, Error> {
+    pub(crate) fn create_one(
+        &mut self,
+        resource: ResourceCreateDescriptor,
+    ) -> Result<ResourceHandle, Error> {
         match resource {
             ResourceCreateDescriptor::Buffer { id, buffer } => {
                 let id = BufferId(id);
@@ -96,10 +99,11 @@ impl super::device::Device {
                 } else {
                     None
                 };
-                if texture.render_attachment && texture.data.iter().all(|byte| *byte == 0) {
-                    if let Some(rtv) = rtv {
-                        self.clear_target(&resource, rtv)?;
-                    }
+                if texture.render_attachment
+                    && texture.data.iter().all(|byte| *byte == 0)
+                    && let Some(rtv) = rtv
+                {
+                    self.clear_target(&resource, rtv)?;
                 }
                 self.textures.insert(
                     id,
@@ -193,7 +197,9 @@ impl super::device::Device {
                 self.groups.insert(id, GpuGroup { set, slots });
                 Ok(ResourceHandle::BindGroup(id))
             }
-            ResourceCreateDescriptor::Sampler { id, .. } => Ok(ResourceHandle::Sampler(SamplerId(id))),
+            ResourceCreateDescriptor::Sampler { id, .. } => {
+                Ok(ResourceHandle::Sampler(SamplerId(id)))
+            }
             ResourceCreateDescriptor::Shader { id, artifact } => {
                 let id = ShaderId(id);
                 if self.shaders.contains_key(&id) {
@@ -244,7 +250,12 @@ impl super::device::Device {
         }
     }
 
-    pub(crate) fn write_buffer(&mut self, id: BufferId, offset: u64, data: &[u8]) -> Result<(), Error> {
+    pub(crate) fn write_buffer(
+        &mut self,
+        id: BufferId,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<(), Error> {
         let resource = self
             .buffers
             .get(&id)
@@ -321,7 +332,11 @@ impl super::device::Device {
         self.submit()
     }
 
-    pub(crate) fn upload_default_buffer(&mut self, resource: &ID3D12Resource, data: &[u8]) -> Result<(), Error> {
+    pub(crate) fn upload_default_buffer(
+        &mut self,
+        resource: &ID3D12Resource,
+        data: &[u8],
+    ) -> Result<(), Error> {
         let staging = self.create_buffer_resource(
             data.len() as u64,
             D3D12_HEAP_TYPE_UPLOAD,
@@ -356,7 +371,11 @@ pub(crate) fn heap(kind: D3D12_HEAP_TYPE) -> D3D12_HEAP_PROPERTIES {
 pub(crate) fn upload_bytes(resource: &ID3D12Resource, data: &[u8]) -> Result<(), Error> {
     upload_bytes_at(resource, 0, data)
 }
-pub(crate) fn upload_bytes_at(resource: &ID3D12Resource, offset: u64, data: &[u8]) -> Result<(), Error> {
+pub(crate) fn upload_bytes_at(
+    resource: &ID3D12Resource,
+    offset: u64,
+    data: &[u8],
+) -> Result<(), Error> {
     unsafe {
         let mut ptr = std::ptr::null_mut();
         resource
@@ -371,7 +390,10 @@ pub(crate) fn upload_bytes_at(resource: &ID3D12Resource, offset: u64, data: &[u8
     }
     Ok(())
 }
-pub(crate) fn texture_location(resource: &ID3D12Resource, offset: u64) -> D3D12_TEXTURE_COPY_LOCATION {
+pub(crate) fn texture_location(
+    resource: &ID3D12Resource,
+    offset: u64,
+) -> D3D12_TEXTURE_COPY_LOCATION {
     D3D12_TEXTURE_COPY_LOCATION {
         pResource: std::mem::ManuallyDrop::new(Some(resource.clone())),
         Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,

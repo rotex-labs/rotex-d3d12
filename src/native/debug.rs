@@ -45,8 +45,7 @@ pub(crate) fn dxgi_debug_messages() -> String {
         }
         let mut bytes = vec![0u8; length];
         let message = bytes.as_mut_ptr().cast::<DXGI_INFO_QUEUE_MESSAGE>();
-        if unsafe { queue.GetMessage(DXGI_DEBUG_ALL, index, Some(message), &mut length) }.is_err()
-        {
+        if unsafe { queue.GetMessage(DXGI_DEBUG_ALL, index, Some(message), &mut length) }.is_err() {
             continue;
         }
         let message = unsafe { &*message };
@@ -104,7 +103,9 @@ pub(crate) fn debug_messages(device: &ID3D12Device) -> String {
             let raw = unsafe {
                 std::slice::from_raw_parts(message.pDescription, message.DescriptionByteLength)
             };
-            String::from_utf8_lossy(raw).trim_end_matches('\0').to_string()
+            String::from_utf8_lossy(raw)
+                .trim_end_matches('\0')
+                .to_string()
         };
         lines.push(format!("{:?} {:?}", message.Severity, description));
     }
