@@ -12,12 +12,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-trait = "0.1.89"
-rotex-core = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "23ba8931416ce7b604d91604bf421c3b514271d8" }
-rotex-types = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "23ba8931416ce7b604d91604bf421c3b514271d8" }
+rotex-core = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "acebfd3bfda1d293215d0fb2f6e546c46e032c7e" }
+rotex-types = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "acebfd3bfda1d293215d0fb2f6e546c46e032c7e" }
 
 [dev-dependencies]
 pollster = "0.4.0"
-rotex-conformance = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "23ba8931416ce7b604d91604bf421c3b514271d8" }
+rotex-conformance = { version = "0.3.0", git = "https://github.com/rotex-labs/rotex-core", rev = "acebfd3bfda1d293215d0fb2f6e546c46e032c7e" }
 
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6.2"
