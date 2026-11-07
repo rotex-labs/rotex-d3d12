@@ -40,7 +40,7 @@ pub(crate) fn capabilities() -> BackendCapabilities {
     BackendCapabilities {
         core: CAPS,
         limits: Limits::CORE_MIN,
-        extensions: if cfg!(windows) {
+        features: if cfg!(windows) {
             FeatureSet::INDIRECT_DRAW
         } else {
             FeatureSet::empty()

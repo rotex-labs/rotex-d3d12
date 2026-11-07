@@ -115,6 +115,3 @@ pub(crate) fn debug_messages(device: &ID3D12Device) -> String {
         lines.join(" || ")
     }
 }
-pub(crate) fn debug_requested() -> bool {
-    std::env::var("ROTEX_D3D12_DEBUG").ok().as_deref() == Some("1")
-}

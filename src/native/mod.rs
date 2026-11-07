@@ -12,4 +12,5 @@ mod swapchain;
 mod types;
 
 pub(crate) use adapter::Adapter;
+pub(crate) use debug::enable_debug_layer;
 pub(crate) use device::Device;

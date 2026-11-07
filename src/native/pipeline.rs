@@ -67,6 +67,7 @@ type GraphicsPipelineParts = (
 pub(crate) fn create_graphics_pipeline(
     device: &ID3D12Device,
     pipeline: &rotex_types::GraphicsPipelineDescriptor,
+    debug: bool,
 ) -> Result<GraphicsPipelineParts, Error> {
     let vs = dxil(&pipeline.shaders.vertex)
         .ok_or_else(|| Error::unsupported("vertex shader has no DXIL payload"))?;
@@ -153,7 +154,7 @@ pub(crate) fn create_graphics_pipeline(
             .map(|format| dxgi_format(*format))
             .unwrap_or(DXGI_FORMAT_R8G8B8A8_UNORM);
         desc.SampleDesc.Count = 1;
-        if debug_requested() {
+        if debug {
             clear_debug_messages(device);
         }
         let state = device.CreateGraphicsPipelineState(&desc);

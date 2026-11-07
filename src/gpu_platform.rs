@@ -11,6 +11,8 @@ use crate::recorder::D3d12Bridge;
 pub struct D3d12GpuPlatform {
     #[cfg(windows)]
     adapter: crate::native::Adapter,
+    #[cfg(windows)]
+    debug: bool,
 }
 
 #[async_trait]
@@ -20,9 +22,13 @@ impl GpuPlatform for D3d12GpuPlatform {
     async fn new(platform_descriptor: PlatformDescriptor) -> Result<Self, Error> {
         #[cfg(windows)]
         {
-            let _ = platform_descriptor;
+            let debug = platform_descriptor.debug == rotex_types::DebugMode::Validation;
+            if debug {
+                crate::native::enable_debug_layer();
+            }
             Ok(Self {
                 adapter: crate::native::Adapter::first()?,
+                debug,
             })
         }
         #[cfg(not(windows))]
@@ -56,6 +62,7 @@ impl GpuPlatform for D3d12GpuPlatform {
             let _ = device_descriptor;
             Ok(D3d12Bridge::from_device(crate::native::Device::open(
                 &self.adapter,
+                self.debug,
             )?))
         }
         #[cfg(not(windows))]

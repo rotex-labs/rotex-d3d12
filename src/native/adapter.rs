@@ -36,9 +36,8 @@ impl Adapter {
                     compute_queue_count: 1,
                     transfer_queue_count: 1,
                 },
-                available_features: rotex_types::DeviceFeatures::default(),
+                features: rotex_types::FeatureSet::INDIRECT_DRAW,
                 limits: Limits::CORE_MIN,
-                extensions: rotex_types::FeatureSet::INDIRECT_DRAW,
                 core: caps::CAPS,
             },
         }

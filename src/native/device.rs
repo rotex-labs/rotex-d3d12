@@ -41,12 +41,8 @@ pub(crate) struct Device {
 }
 
 impl Device {
-    pub(crate) fn open(adapter: &Adapter) -> Result<Self, Error> {
+    pub(crate) fn open(adapter: &Adapter, debug: bool) -> Result<Self, Error> {
         unsafe {
-            let debug = debug_requested();
-            if debug {
-                enable_debug_layer();
-            }
             let mut device: Option<ID3D12Device> = None;
             D3D12CreateDevice(&adapter.adapter, D3D_FEATURE_LEVEL_11_0, &mut device)
                 .map_err(|_| Error::unsupported("D3D12CreateDevice failed"))?;
@@ -199,7 +195,8 @@ impl Device {
                     dxgi_debug_messages()
                 )
             } else {
-                " | re-run with ROTEX_D3D12_DEBUG=1 for the validation log".to_string()
+                " | set PlatformDescriptor.debug to DebugMode::Validation for the validation log"
+                    .to_string()
             };
             Error::fatal(rotex_core::ErrorKind::Backend(format!(
                 "ResizeBuffers failed: {err}{detail}"

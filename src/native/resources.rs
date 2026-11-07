@@ -125,7 +125,7 @@ impl super::device::Device {
                     return Err(Error::unsupported("resource id already exists"));
                 }
                 let (state, root_signature, views, topology, strides) =
-                    create_graphics_pipeline(&self.device, &pipeline)?;
+                    create_graphics_pipeline(&self.device, &pipeline, self.debug)?;
                 self.pipelines.insert(
                     id,
                     GpuPipeline {
