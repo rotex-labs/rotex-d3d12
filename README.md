@@ -30,7 +30,7 @@ Direct3D 12 on Windows. Other platforms return unsupported.
 
 ## Status
 
-Version 0.2.0. Off Windows every core capability is absent and `GpuPlatform::new` returns unsupported. The Windows translator is not built by a Linux `cargo check`.
+Version 0.3.0. Active on Windows: device, swapchain, compute, graphics, resize, and shutdown run the shared command list, and `PlatformDescriptor.debug` turns on the debug layer. Off Windows every core capability is absent and `GpuPlatform::new` returns unsupported.
 
 ## License
 
